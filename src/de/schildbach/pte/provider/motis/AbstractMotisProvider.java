@@ -41,6 +41,11 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAccessor;
 import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -224,6 +229,12 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
         return CAPABILITIES;
     }
 
+    protected static PTDate parseMotisDateTime(String dateTime, ZoneId zone) {
+        final TemporalAccessor t = DateTimeFormatter.ISO_DATE_TIME.parse(dateTime);
+        final ZonedDateTime odt = OffsetDateTime.from(t).atZoneSameInstant(zone);
+        return new PTDate(Date.from(Instant.from(odt)), TimeZone.getTimeZone(odt.getZone()));
+    }
+    
     protected static Line parseMotisLine(JSONObject data) throws JSONException {
         return new Line(
                 data.getString("routeId"),
@@ -241,7 +252,7 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
     protected static Stop parseMotisStop(JSONObject data, boolean realtime) throws JSONException {
         final Location location = parseMotisPlace(data);
         final TimeZone tz = TimeZone.getTimeZone(data.getString("tz"));
-        final Function<String, PTDate> getDate = s -> new PTDate(Date.from(Instant.parse(s)), tz);
+        final Function<String, PTDate> getDate = s -> parseMotisDateTime(s, tz.toZoneId());
 
         return new Stop(
                 location,
@@ -485,7 +496,7 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
             endpointBuilder.setQueryParameter("window", String.valueOf(3600));
         }
         if (time != null) {
-            endpointBuilder.addQueryParameter("time", new SimpleDateFormat("yyyy-MM-dd'T'h:m:ss.SZ").format(time));
+            endpointBuilder.addQueryParameter("time", DateTimeFormatter.ISO_DATE_TIME.format(time.toInstant().atZone(ZoneId.of("UTC"))));
         }
         
         if (products != null && !products.isEmpty()) {
@@ -542,8 +553,8 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
 
                     final StationDepartures sd = stationMap.get(departureStopId);
                     sd.departures.add(new Departure(
-                            new PTDate(Date.from(Instant.parse(place.getString("scheduledDeparture"))), TimeZone.getTimeZone(place.getString("tz"))),
-                            new PTDate(Date.from(Instant.parse(place.getString("departure"))), TimeZone.getTimeZone(place.getString("tz"))),
+                            parseMotisDateTime(place.getString("scheduledDeparture"), ZoneId.of(place.getString("tz"))),
+                            parseMotisDateTime(place.getString("departure"), ZoneId.of(place.getString("tz"))),
                             line,
                             place.has("scheduledTrack") ? new Position(place.getString("scheduledTrack")) : null,
                             place.has("track") ? new Position(place.getString("track")) : null,
@@ -641,7 +652,7 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
             throw new IllegalArgumentException("to needs to be stop or have coordinates: " + to);
         }
 
-        endpointBuilder.addQueryParameter("time", new SimpleDateFormat("yyyy-MM-dd'T'h:m:ss.SZ").format(date));
+        endpointBuilder.addQueryParameter("time", DateTimeFormatter.ISO_DATE_TIME.format(date.toInstant().atZone(ZoneId.of("UTC"))));
 
         endpointBuilder.addQueryParameter("arriveBy", String.valueOf(!dep));
 
