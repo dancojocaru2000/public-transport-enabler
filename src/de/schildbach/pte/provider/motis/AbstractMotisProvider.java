@@ -47,6 +47,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -221,6 +222,9 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
     protected AbstractMotisProvider(NetworkId network, HttpUrl apiBase) {
         super(network);
         httpClient.setHeader("Accept", "application/json");
+        // Complex routing requests (regional only, across the continent) take time to complete,
+        // the default timeout is insufficient
+        httpClient.setTimeout(30, TimeUnit.SECONDS);
         this.apiBase = requireNonNull(apiBase);
     }
 
