@@ -168,6 +168,19 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
         public HttpUrl getEndpoint() {
             return HttpUrl.parse(endpointUrl);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof MotisTripRef)) return false;
+            if (!super.equals(o)) return false;
+            MotisTripRef that = (MotisTripRef) o;
+            return Objects.equals(from, that.from) && Objects.equals(via, that.via) && Objects.equals(to, that.to) && Objects.equals(nextPageCursor, that.nextPageCursor) && Objects.equals(previousPageCursor, that.previousPageCursor) && Objects.equals(endpointUrl, that.endpointUrl);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(super.hashCode(), from, via, to, nextPageCursor, previousPageCursor, endpointUrl);
+        }
     }
 
     public static class MotisJourneyRef extends JourneyRef {
@@ -183,6 +196,18 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
         @Override
         public String getUniqueId() {
             return tripId;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof MotisJourneyRef)) return false;
+            MotisJourneyRef that = (MotisJourneyRef) o;
+            return Objects.equals(tripId, that.tripId);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(tripId);
         }
     }
 
