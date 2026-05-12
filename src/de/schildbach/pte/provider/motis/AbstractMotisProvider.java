@@ -714,9 +714,13 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
     protected QueryTripsResult actualQueryTrips(@Nonnull HttpUrl endpoint, @Nonnull Location from, @Nullable Location via, @Nonnull Location to, boolean loadPath) throws IOException {
         final HttpUrl.Builder b = endpoint.newBuilder();
         b.removeAllQueryParameters("detailedTransfers");
-        if (!loadPath) {
-            b.setQueryParameter("detailedTransfers", "false");
-        }
+        
+        // TODO: Uncomment when loadPath is not always false
+        // detailedTransfers are needed in order to obtain the distance when walking from one stop to another
+        
+        // if (!loadPath) {
+        //     b.setQueryParameter("detailedTransfers", "false");
+        // }
         final CharSequence apiResult = httpClient.get(b.build());
 
         try {
