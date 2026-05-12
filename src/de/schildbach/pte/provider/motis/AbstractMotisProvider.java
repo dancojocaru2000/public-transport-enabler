@@ -117,6 +117,58 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
         CAPABILITIES.add(Capability.JOURNEY);
         CAPABILITIES.add(Capability.TRIP_RELOAD);
     }
+    
+    public static class MotisTripRef extends TripRef implements QueryTripsContext, Serializable, MessagePackUtils.Packable {
+        @Serial
+        private static final long serialVersionUID = 7250525175653739883L;
+
+        protected Location from;
+        @Nullable
+        protected Location via;
+        protected Location to;
+
+        @Nullable
+        protected String nextPageCursor;
+        @Nullable
+        protected String previousPageCursor;
+        protected String endpointUrl;
+
+        public MotisTripRef(NetworkId network, HttpUrl endpoint, Location from, @Nullable Location via, Location to, @Nullable String nextPageCursor, @Nullable String previousPageCursor) {
+            super(network, from, via, to);
+            this.endpointUrl = endpoint.toString();
+            this.nextPageCursor = nextPageCursor;
+            this.previousPageCursor = previousPageCursor;
+        }
+
+        @Override
+        public void packToMessage(MessagePacker packer) throws IOException {
+            super.packToMessage(packer);
+            MessagePackUtils.packNullableString(packer, previousPageCursor);
+            MessagePackUtils.packNullableString(packer, nextPageCursor);
+            MessagePackUtils.packNullableString(packer, endpointUrl);
+        }
+
+        public MotisTripRef(NetworkId network, MessageUnpacker unpacker) throws IOException {
+            super(network, unpacker);
+            this.previousPageCursor = MessagePackUtils.unpackNullableString(unpacker);
+            this.nextPageCursor = MessagePackUtils.unpackNullableString(unpacker);
+            this.endpointUrl = requireNonNull(MessagePackUtils.unpackNullableString(unpacker));
+        }
+
+        @Override
+        public boolean canQueryLater() {
+            return nextPageCursor != null;
+        }
+
+        @Override
+        public boolean canQueryEarlier() {
+            return previousPageCursor != null;
+        }
+
+        public HttpUrl getEndpoint() {
+            return HttpUrl.parse(endpointUrl);
+        }
+    }
 
     public static class MotisJourneyRef extends JourneyRef {
         @Serial
@@ -525,61 +577,9 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
         }
     }
 
-    public static class QueryContext extends TripRef implements QueryTripsContext, Serializable, MessagePackUtils.Packable {
-        @Serial
-        private static final long serialVersionUID = 7250525175653739883L;
-
-        protected Location from;
-        @Nullable
-        protected Location via;
-        protected Location to;
-
-        @Nullable
-        protected String nextPageCursor;
-        @Nullable
-        protected String previousPageCursor;
-        protected String endpointUrl;
-
-        public QueryContext(NetworkId network, HttpUrl endpoint, Location from, @Nullable Location via, Location to, @Nullable String nextPageCursor, @Nullable String previousPageCursor) {
-            super(network, from, via, to);
-            this.endpointUrl = endpoint.toString();
-            this.nextPageCursor = nextPageCursor;
-            this.previousPageCursor = previousPageCursor;
-        }
-
-        @Override
-        public void packToMessage(MessagePacker packer) throws IOException {
-            super.packToMessage(packer);
-            MessagePackUtils.packNullableString(packer, previousPageCursor);
-            MessagePackUtils.packNullableString(packer, nextPageCursor);
-            MessagePackUtils.packNullableString(packer, endpointUrl);
-        }
-
-        public QueryContext(NetworkId network, MessageUnpacker unpacker) throws IOException {
-            super(network, unpacker);
-            this.previousPageCursor = MessagePackUtils.unpackNullableString(unpacker);
-            this.nextPageCursor = MessagePackUtils.unpackNullableString(unpacker);
-            this.endpointUrl = requireNonNull(MessagePackUtils.unpackNullableString(unpacker));
-        }
-
-        @Override
-        public boolean canQueryLater() {
-            return nextPageCursor != null;
-        }
-
-        @Override
-        public boolean canQueryEarlier() {
-            return previousPageCursor != null;
-        }
-
-        public HttpUrl getEndpoint() {
-            return HttpUrl.parse(endpointUrl);
-        }
-    }
-
     @Override
     public TripRef unpackTripRefFromMessage(MessageUnpacker unpacker) throws IOException {
-        return new QueryContext(network, unpacker);
+        return new MotisTripRef(network, unpacker);
     }
 
     @Override
@@ -658,19 +658,19 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
 
     @Override
     public QueryTripsResult queryMoreTrips(QueryTripsContext context, boolean later, boolean loadPath) throws IOException {
-        if (!(context instanceof QueryContext)) {
+        if (!(context instanceof MotisTripRef)) {
             throw new IllegalArgumentException("Wrong context");
         }
-        final String pageCursor = later ? ((QueryContext) context).nextPageCursor : ((QueryContext) context).previousPageCursor;
+        final String pageCursor = later ? ((MotisTripRef) context).nextPageCursor : ((MotisTripRef) context).previousPageCursor;
         if (pageCursor == null) {
             return new QueryTripsResult(new ResultHeader(network, "MOTIS"), QueryTripsResult.Status.NO_TRIPS);
         }
 
-        final HttpUrl.Builder b = ((QueryContext) context).getEndpoint().newBuilder();
+        final HttpUrl.Builder b = ((MotisTripRef) context).getEndpoint().newBuilder();
         b.addQueryParameter("pageCursor", pageCursor);
         final HttpUrl endpointWithCursor = b.build();
 
-        return actualQueryTrips(endpointWithCursor, ((QueryContext) context).from, ((QueryContext) context).via, ((QueryContext) context).to, loadPath);
+        return actualQueryTrips(endpointWithCursor, ((MotisTripRef) context).from, ((MotisTripRef) context).via, ((MotisTripRef) context).to, loadPath);
     }
 
     protected QueryTripsResult actualQueryTrips(@Nonnull HttpUrl endpoint, @Nonnull Location from, @Nullable Location via, @Nonnull Location to, boolean loadPath) throws IOException {
@@ -688,8 +688,8 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
             final List<Trip> trips = new ArrayList<>(itineraries.length() + direct.length());
 
             try {
-                parseMotisItineraries(itineraries, new QueryContext(network, endpoint, from, via, to, null, null)).forEach(trips::add);
-                parseMotisItineraries(direct, new QueryContext(network, endpoint, from, via, to, null, null)).forEach(trips::add);
+                parseMotisItineraries(itineraries, new MotisTripRef(network, endpoint, from, via, to, null, null)).forEach(trips::add);
+                parseMotisItineraries(direct, new MotisTripRef(network, endpoint, from, via, to, null, null)).forEach(trips::add);
             } catch (RuntimeException e) {
                 if (e.getCause() instanceof JSONException) {
                     throw (JSONException) e.getCause();
@@ -703,7 +703,7 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
                     from,
                     via,
                     to,
-                    new QueryContext(network, endpoint, from, via, to, data.optString("nextPageCursor"), data.optString("previousPageCursor")),
+                    new MotisTripRef(network, endpoint, from, via, to, data.optString("nextPageCursor"), data.optString("previousPageCursor")),
                     trips
             );
         } catch (JSONException x) {
@@ -747,10 +747,10 @@ public class AbstractMotisProvider extends AbstractNetworkProvider {
 
     @Override
     public QueryTripsResult queryReloadTrip(TripRef tripRef, boolean loadPath) throws IOException {
-        if (tripRef.network != network || !(tripRef instanceof QueryContext)) {
+        if (tripRef.network != network || !(tripRef instanceof MotisTripRef)) {
             throw new IllegalArgumentException("cannot handle: " + tripRef);
         }
-        final QueryContext ctx = (QueryContext) tripRef;
+        final MotisTripRef ctx = (MotisTripRef) tripRef;
         return this.actualQueryTrips(ctx.getEndpoint(), tripRef.from, tripRef.via, tripRef.to, loadPath);
     }
 }
